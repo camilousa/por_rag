@@ -1,0 +1,54 @@
+[
+  {
+    "inputs": {
+      "question": "¿Cómo se llamaba el gato del cuento 'El gato negro'?",
+      "context": "literatura"
+    },
+    "expectations": {
+      "expected_response": "El gato del narrador se llamaba Plutón.",
+      "must_mention": ["Plutón"]
+    },
+    "tags": {
+      "priority": "medium"
+    }
+  },
+  {
+    "inputs": {
+      "question": "¿Dónde se posó el cuervo en el cuento 'El cuervo'?",
+      "context": "literatura"
+    },
+    "expectations": {
+      "expected_response": "El cuervo se posó sobre un busto de Minerva o Palas, sobre la puerta.",
+      "must_mention": ["busto", "Minerva"]
+    },
+    "tags": {
+      "priority": "medium"
+    }
+  },
+  {
+    "inputs": {
+      "question": "¿Qué relación tenía Leonora con el narrador en 'El cuervo'?",
+      "context": "literatura"
+    },
+    "expectations": {
+      "expected_response": "Leonora era la amada del narrador, cuya muerte le causó profunda desventura.",
+      "must_mention": ["amada", "muerte"]
+    },
+    "tags": {
+      "priority": "medium"
+    }
+  },
+  {
+    "inputs": {
+      "question": "¿Qué órgano del cuerpo es central en el cuento 'El corazón delator'?",
+      "context": "literatura"
+    },
+    "expectations": {
+      "expected_response": "El órgano central del cuento es el corazón del anciano.",
+      "must_mention": ["corazón"]
+    },
+    "tags": {
+      "priority": "medium"
+    }
+  }
+]
