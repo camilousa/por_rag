@@ -14,6 +14,7 @@ from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
 from langchain_google_genai import ChatGoogleGenerativeAI
+import mlflow
 
 from .retriever import get_ensemble_retriever
 
@@ -85,7 +86,7 @@ PROMPT = ChatPromptTemplate.from_messages(
 # ---------------------------------------------------------------------
 # Chain RAG
 # ---------------------------------------------------------------------
-
+@mlflow.trace
 def build_rag_chain(k_candidates: int = 8):
     """
     input (str) -> retriever -> docs -> contexto
@@ -105,6 +106,7 @@ def build_rag_chain(k_candidates: int = 8):
     return rag_chain, retriever
 
 
+@mlflow.trace
 def generate_answer(
     question: str,
     k: int = 5,
@@ -117,6 +119,12 @@ def generate_answer(
     Devuelve:
         (respuesta, documentos_utilizados)
     """
+    mlflow.update_current_trace(
+        metadata={
+            "mlflow.trace.user": "111",  # Links trace to specific user
+            "mlflow.trace.session": "333",  # Groups trace with conversation
+        }
+    )
     rag_chain, retriever = build_rag_chain(k_candidates=k_candidates)
 
     # 1) Respuesta usando el chain completo (ya es str)

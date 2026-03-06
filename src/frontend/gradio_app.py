@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Tuple
 import gradio as gr
 from dotenv import load_dotenv
 from langchain_core.documents import Document
-
+import mlflow
 from src.backend.generator import generate_answer
 import os
 
@@ -236,7 +236,16 @@ def list_models():
 
 if __name__ == "__main__":
     #list_models()
-    
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
+    mlflow.set_experiment("prod")
+    user_id="2132"
+    session_id="2121"
+    mlflow.update_current_trace(
+        metadata={
+            "mlflow.trace.user": user_id,  # Links trace to specific user
+            "mlflow.trace.session": session_id,  # Groups trace with conversation
+        }
+    )
     app = build_app()
     app.launch(server_name="0.0.0.0", server_port=7860, theme="soft")
    

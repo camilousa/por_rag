@@ -7,6 +7,7 @@ import re
 from typing import Any, Dict, List, Tuple
 
 import chromadb
+import os
 import requests
 from dotenv import load_dotenv
 from langchain_chroma import Chroma
@@ -15,6 +16,7 @@ from langchain_core.documents import Document
 from langchain_core.embeddings import Embeddings
 from langchain_core.retrievers import BaseRetriever
 
+import mlflow
 # ---------------------------------------------------------------------
 # Constantes (ajusta si cambian)
 # ---------------------------------------------------------------------
@@ -108,10 +110,12 @@ def load_all_docs_from_chroma() -> List[Document]:
 # Constructores de retrievers simples
 # ---------------------------------------------------------------------
 
+@mlflow.trace(span_type="func", attributes={"key": "value"})
 def get_vector_retriever(k: int = 3):
     """
     Retriever semántico (denso) usando Chroma + embeddings de Ollama.
     """
+    print("vector retriever")
     client = chromadb.HttpClient(host=CHROMA_HOST, port=CHROMA_PORT)
 
     vectorstore = Chroma(
@@ -122,7 +126,7 @@ def get_vector_retriever(k: int = 3):
 
     return vectorstore.as_retriever(search_kwargs={"k": k})
 
-
+@mlflow.trace
 def get_bm25_retriever(k: int = 3):
     """
     Retriever léxico BM25 basado en los mismos documentos que están en Chroma.
@@ -137,7 +141,7 @@ def get_bm25_retriever(k: int = 3):
 # ---------------------------------------------------------------------
 # HybridEnsembleRetriever propio
 # ---------------------------------------------------------------------
-
+@mlflow.trace
 class HybridEnsembleRetriever(BaseRetriever):
     """
     Retriever híbrido que combina varios retrievers usando
@@ -173,7 +177,7 @@ class HybridEnsembleRetriever(BaseRetriever):
         sorted_ids = sorted(scores, key=scores.get, reverse=True)
         return [doc_by_id[i] for i in sorted_ids]
 
-
+@mlflow.trace
 def get_ensemble_retriever(
     k: int = 3,
     bm25_weight: float = 0.3,
@@ -274,7 +278,7 @@ Responde SOLO con un número (puede tener decimales), sin texto adicional.
 # ---------------------------------------------------------------------
 # Ejemplo de uso desde terminal
 # ---------------------------------------------------------------------
-
+@mlflow.trace(name="demo")
 def demo(
     query: str = "¿cómo se llamaba el gato del cuento?",
     k: int = 4,
@@ -307,6 +311,9 @@ def demo(
 
 if __name__ == "__main__":
     # Con reranker
+    mlflow.set_experiment("Simple traces")
+    mlflow.set_tracking_uri(os.getenv("MLFLOW_TRACKING_URI"))
+    mlflow.langchain.autolog()
     demo(query="¿cómo se llamaba el gato del cuento?")
 
     # Sin reranker
