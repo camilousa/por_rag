@@ -15,7 +15,7 @@ mlflow.set_experiment("simple eval")
 eval_data = pd.read_json("ground_truth_dataset.json")
 
 
-
+@mlflow.trace
 def poe_rag(question: str, context: str) -> str:
 	predictions = []
 #	print(inputs)
@@ -23,13 +23,15 @@ def poe_rag(question: str, context: str) -> str:
 #		predictions.append("No sé")
 	return "No sé"
 
-mlflow.genai.evaluate(
-        predict_fn=poe_rag,
-        data=eval_data,
-        scorers=[
-          Correctness()
-]
-)
+mlflow.langchain.autolog()
+with mlflow.start_span(name="evaluation"):
+	mlflow.genai.evaluate(
+        	predict_fn=poe_rag,
+	        data=eval_data,
+	        scorers=[
+	          Correctness()
+	]
+	)
 
 
 
