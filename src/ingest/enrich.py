@@ -10,8 +10,7 @@ from dataclasses import dataclass
 from typing import Dict, Iterator, List, Optional
 
 from dotenv import load_dotenv
-from google import genai
-from google.genai import types as genai_types
+from openai import OpenAI
 from pydantic import BaseModel, Field
 
 # ---------------------------------------------------------------------
@@ -21,9 +20,9 @@ from pydantic import BaseModel, Field
 load_dotenv()
 
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-GEMINI_MODEL = os.getenv("GEMINI_MODEL")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 # ---------------------------------------------------------------------
 # 1. Modelos de salida (schema)
 # ---------------------------------------------------------------------
@@ -78,27 +77,27 @@ class RateLimiter:
 
 
 # ---------------------------------------------------------------------
-# 3. Cliente Gemini y lógica de enriquecimiento
+# 3. Cliente OpenAI y lógica de enriquecimiento
 # ---------------------------------------------------------------------
 
-class GeminiEnricher:
+class OpenAIEnricher:
     """
-    Encapsula la llamada a Gemini/Gemma para enriquecer chunks con resumen,
+    Encapsula la llamada a OpenAI para enriquecer chunks con resumen,
     palabras clave y entidades nombradas.
     """
 
     def __init__(
         self,
-        model: str = GEMINI_MODEL,
+        model: str = OPENAI_MODEL,
         max_calls_per_minute: int = 9,
     ) -> None:
-        if not GOOGLE_API_KEY:
+        if not OPENAI_API_KEY:
             raise RuntimeError(
-                "GOOGLE_API_KEY no está definida. "
+                "OPENAI_API_KEY no está definida. "
                 "Asegúrate de declararla en el archivo .env."
             )
 
-        self.client = genai.Client(api_key=GOOGLE_API_KEY)
+        self.client = OpenAI(api_key=OPENAI_API_KEY)
         self.model = model
         self.rate_limiter = RateLimiter(max_calls=max_calls_per_minute)
 
@@ -108,9 +107,8 @@ class GeminiEnricher:
         doc_metadata: Optional[Dict] = None,
     ) -> ChunkMetadata:
         """
-        Enriquecimiento de un solo chunk de texto usando Gemini/Gemma.
-        Si el modelo no soporta JSON mode (p.ej. gemma-3-*), se hace
-        prompting para JSON y se parsea manualmente.
+        Enriquecimiento de un solo chunk de texto usando OpenAI, con
+        salida estructurada validada contra el esquema ChunkMetadata.
         """
         self.rate_limiter.wait_for_slot()
 
@@ -121,7 +119,7 @@ class GeminiEnricher:
                 f"{json.dumps(doc_metadata, ensure_ascii=False)}\n\n"
             )
 
-        base_prompt = (
+        prompt = (
             "Eres un asistente para preparar datos de un sistema de Recuperación "
             "Aumentada por Generación (RAG) en español. A partir del siguiente "
             "fragmento de texto (chunk), debes generar:\n"
@@ -135,82 +133,14 @@ class GeminiEnricher:
             f"{text}\n\n"
         )
 
-        # --------- RAMA 1: modelos que SÍ soportan JSON mode (Gemini 2.5, etc.) ---------
-        # Usamos structured outputs solo si NO es Gemma 3.
-        if not (self.model or "").startswith("gemma-3"):
-            prompt = base_prompt + (
-                "Responde SOLO con los campos solicitados en formato JSON con esta forma:\n"
-                "{\n"
-                '  \"summary\": \"...\",\n'
-                '  \"keywords\": [\"...\"],\n'
-                '  \"entities\": [\n'
-                '    {\"type\": \"...\", \"text\": \"...\"}\n'
-                "  ]\n"
-                "}\n"
-            )
-
-            response = self.client.models.generate_content(
-                model=self.model,
-                contents=prompt,
-                config=genai_types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=ChunkMetadata,
-                    temperature=0.2,
-                ),
-            )
-
-            return response.parsed
-
-        # --------- RAMA 2: Gemma 3 (NO soporta JSON mode) ---------
-        # Aquí pedimos JSON por prompt y parseamos manualmente.
-        prompt = base_prompt + (
-            "Responde SOLO con un JSON válido (sin texto adicional) con esta forma exacta:\n"
-            "{\n"
-            '  \"summary\": \"texto del resumen\",\n'
-            '  \"keywords\": [\"palabra1\", \"palabra2\"],\n'
-            '  \"entities\": [\n'
-            '    {\"type\": \"PERSON\", \"text\": \"Ejemplo de nombre\"}\n'
-            "  ]\n"
-            "}\n"
-            "No incluyas comentarios, explicaciones ni texto fuera del JSON.\n"
-        )
-
-        response = self.client.models.generate_content(
+        completion = self.client.chat.completions.parse(
             model=self.model,
-            contents=prompt,
-            config=genai_types.GenerateContentConfig(
-                temperature=0.2,
-            ),
+            messages=[{"role": "user", "content": prompt}],
+            response_format=ChunkMetadata,
+            temperature=0.2,
         )
 
-        # En el SDK nuevo, response.text expone el contenido como string
-        raw = response.text or ""
-        raw = raw.strip()
-
-        # Quitar fences tipo ```json ... ``` si los hubiera
-        if raw.startswith("```"):
-            lines = raw.splitlines()
-            # quitar primera línea (``` o ```json)
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-            # quitar última línea ``` si está
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            raw = "\n".join(lines).strip()
-
-        # Intentar recortar desde el primer '{' hasta el último '}'
-        start = raw.find("{")
-        end = raw.rfind("}")
-        if start != -1 and end != -1 and start < end:
-            raw = raw[start : end + 1]
-
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError as e:
-            print("Error al parsear JSON devuelto por el modelo:\n", raw)
-            raise e
-
-        return ChunkMetadata(**data)
+        return completion.choices[0].message.parsed
 
 
 
@@ -243,15 +173,15 @@ def write_jsonl(records: List[Dict], output_path: str) -> None:
 def enrich_directory(
     silver_chunk_dir: str = "data/silver/chunked",
     gold_dir: str = "data/gold",
-    model_name: str = GEMINI_MODEL,
+    model_name: str = OPENAI_MODEL,
     max_calls_per_minute: int = 9,
 ) -> None:
     """
     Recorre todos los .jsonl de la carpeta silver_chunk_dir, enriquece cada chunk
-    con Gemini y guarda los resultados en gold_dir (un archivo .jsonl de salida
+    con OpenAI y guarda los resultados en gold_dir (un archivo .jsonl de salida
     por cada archivo de entrada).
     """
-    enricher = GeminiEnricher(
+    enricher = OpenAIEnricher(
         model=model_name,
         max_calls_per_minute=max_calls_per_minute,
     )
@@ -349,7 +279,7 @@ if __name__ == "__main__":
         enrich_directory(
             silver_chunk_dir="data/silver/chunked",
             gold_dir=gold_dir,
-            model_name=GEMINI_MODEL,
+            model_name=OPENAI_MODEL,
             max_calls_per_minute=25,
         )
 

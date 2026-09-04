@@ -22,7 +22,7 @@ from ragas.metrics import (
     answer_relevancy,
 )
 
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langchain_ollama import OllamaEmbeddings
 
 from src.backend.generator import generate_answer
@@ -95,21 +95,22 @@ def build_eval_dataset() -> Tuple[Dataset, List[Dict[str, Any]]]:
 
 
 # ============================================================
-#  3. LLM evaluador: Gemini con rate limit y limpieza JSON
+#  3. LLM evaluador: OpenAI con rate limit y limpieza JSON
 # ============================================================
 
-class RateLimitedGemini(ChatGoogleGenerativeAI):
+class RateLimitedOpenAI(ChatOpenAI):
     """
-    Wrapper sobre ChatGoogleGenerativeAI para usarlo como juez en RAGAS:
+    Wrapper sobre ChatOpenAI para usarlo como juez en RAGAS:
 
-    - Aplica un delay entre llamadas para no acercarse al límite de QPM.
+    - Aplica un delay opcional entre llamadas (por defecto 0, ya que los
+      límites de tasa de OpenAI son mucho más holgados que los de Gemini).
     - Limpia fences ```json ... ``` de la salida.
     - Intenta dejar un bloque JSON limpio.
     - Si tras limpiar la salida queda vacía, devuelve un JSON neutro
       válido para la métrica de faithfulness (NLIStatementOutput).
     """
 
-    RATE_LIMIT_SECONDS: ClassVar[float] = float(os.getenv("RAGAS_LLM_DELAY", "9.0"))
+    RATE_LIMIT_SECONDS: ClassVar[float] = float(os.getenv("RAGAS_LLM_DELAY", "0.0"))
 
     # ---------- utilidades de limpieza ----------
 
@@ -185,7 +186,7 @@ class RateLimitedGemini(ChatGoogleGenerativeAI):
 
         return result
 
-    # ---------- hooks internos de ChatGoogleGenerativeAI ----------
+    # ---------- hooks internos de ChatOpenAI ----------
 
     def _generate(self, messages, stop=None, **kwargs):
         delay = getattr(self, "RATE_LIMIT_SECONDS", 7.0)
@@ -209,17 +210,17 @@ class RateLimitedGemini(ChatGoogleGenerativeAI):
 
 def get_ragas_models():
     """
-    - LLM evaluador: Gemini (solo para RAGAS).
+    - LLM evaluador: OpenAI (solo para RAGAS).
     - Embeddings: Ollama (ya configurados en tus variables de entorno).
     """
-    gemini_model = os.getenv("GEMINI_MODEL", "gemma-3-27b-it")
-    google_api_key = os.getenv("GOOGLE_API_KEY2")
+    openai_model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+    openai_api_key = os.getenv("OPENAI_API_KEY")
 
-    llm_judge = RateLimitedGemini(
-        model=gemini_model,
-        api_key=google_api_key,
+    llm_judge = RateLimitedOpenAI(
+        model=openai_model,
+        api_key=openai_api_key,
         temperature=0.0,
-        max_output_tokens=4098,
+        max_tokens=4098,
     )
 
     embed_base_url = os.getenv("OLLAMA_EMBED_BASE_URL", "http://localhost:11434")

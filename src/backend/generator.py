@@ -13,7 +13,7 @@ from langchain_core.documents import Document
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnableLambda, RunnablePassthrough
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 import mlflow
 
 from .retriever import get_ensemble_retriever
@@ -25,18 +25,17 @@ from .retriever import get_ensemble_retriever
 
 load_dotenv()
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-if not GOOGLE_API_KEY:
-    raise RuntimeError("Falta GOOGLE_API_KEY en el .env")
+if not OPENAI_API_KEY:
+    raise RuntimeError("Falta OPENAI_API_KEY en el .env")
 
-llm = ChatGoogleGenerativeAI(
-    model=GEMINI_MODEL,
-    api_key=GOOGLE_API_KEY,
+llm = ChatOpenAI(
+    model=OPENAI_MODEL,
+    api_key=OPENAI_API_KEY,
     temperature=0.2,
-    max_output_tokens=2048,
-    convert_system_message_to_human=True
+    max_tokens=2048,
 )
 
 
@@ -159,7 +158,7 @@ def demo(question: str = "¿quién era Leonora?") -> None:
     print("\n=== PREGUNTA ===")
     print(question)
 
-    print("\n=== RESPUESTA (Gemini) ===")
+    print("\n=== RESPUESTA (OpenAI) ===")
     print(answer)
 
     print("\n=== CONTEXTO UTILIZADO ===")
